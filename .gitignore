@@ -3,6 +3,7 @@
 .env.*
 *.pem
 .idea/
+
 # Python 后端缓存与虚拟环境
 __pycache__/
 *.py[cod]
