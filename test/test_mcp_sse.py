@@ -1,14 +1,16 @@
-import time
+import os
 from hello_agents.tools.builtin.protocol_tools import MCPTool
 
 def main():
     print("🚀 初始化支持 SSE 的 MCPTool...")
     
     # 将配置字典传递给 server 参数，MCPClient 会自动识别为配置传输
+    sse_url = os.getenv("ARXIV_MCP_URL", "http://localhost:8001/sse")
     sse_config = {
         "transport": "sse",
-        "url": "http://localhost:8000/sse"
+        "url": sse_url
     }
+    print(f"🔌 连接地址: {sse_url}")
     
     arxiv_tool = MCPTool(
         name="arxiv_mcp",
@@ -36,4 +38,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
 

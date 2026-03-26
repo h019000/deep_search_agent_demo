@@ -88,6 +88,26 @@ class Configuration(BaseModel):
         title="LLM Model ID",
         description="Optional model identifier for custom OpenAI-compatible services",
     )
+    enable_mcp: bool = Field(
+        default=False,
+        title="Enable MCP",
+        description="Enable MCP-based tools such as arXiv MCP search",
+    )
+    arxiv_mcp_transport: str = Field(
+        default="stdio",
+        title="ArXiv MCP Transport",
+        description="Transport mode for ArXiv MCP: stdio or sse",
+    )
+    arxiv_mcp_url: Optional[str] = Field(
+        default=None,
+        title="ArXiv MCP URL",
+        description="ArXiv MCP SSE endpoint URL, used when transport is sse",
+    )
+    arxiv_mcp_command: str = Field(
+        default="python",
+        title="ArXiv MCP Command",
+        description="Command used to spawn local ArXiv MCP server for stdio transport",
+    )
 
     @classmethod
     def from_env(cls, overrides: Optional[dict[str, Any]] = None) -> "Configuration":
@@ -117,9 +137,11 @@ class Configuration(BaseModel):
             "search_api": os.getenv("SEARCH_API"),
             "enable_notes": os.getenv("ENABLE_NOTES"),
             "notes_workspace": os.getenv("NOTES_WORKSPACE"),
+            "enable_mcp": os.getenv("ENABLE_MCP"),
+            "arxiv_mcp_transport": os.getenv("ARXIV_MCP_TRANSPORT"),
+            "arxiv_mcp_url": os.getenv("ARXIV_MCP_URL"),
+            "arxiv_mcp_command": os.getenv("ARXIV_MCP_COMMAND"),
         }
-
-        print(env_aliases)
 
         for key, value in env_aliases.items():
             if value is not None:

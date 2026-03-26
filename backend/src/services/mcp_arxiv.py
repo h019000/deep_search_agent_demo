@@ -5,40 +5,48 @@ import json
 import logging
 from typing import Any, Tuple, Optional
 from hello_agents.tools.builtin.protocol_tools import MCPTool
+from config import Configuration
 
 logger = logging.getLogger(__name__)
 
 # Cache the tool instance
 _ARXIV_TOOL = None
 
-def get_arxiv_tool():
+def get_arxiv_tool(config: Optional[Configuration] = None):
     """Lazy initialize the arxiv MCP tool."""
     global _ARXIV_TOOL
     if _ARXIV_TOOL is None:
-        arxiv_mcp_url = os.environ.get("ARXIV_MCP_URL")
-        if arxiv_mcp_url:
+        resolved = config or Configuration.from_env()
+        if not resolved.enable_mcp:
+            raise RuntimeError("MCP is disabled by configuration (ENABLE_MCP=false)")
+
+        transport = (resolved.arxiv_mcp_transport or "stdio").lower().strip()
+        arxiv_mcp_url = resolved.arxiv_mcp_url or os.environ.get("ARXIV_MCP_URL")
+
+        if transport == "sse":
+            if not arxiv_mcp_url:
+                raise RuntimeError("ARXIV_MCP_URL must be set when ARXIV_MCP_TRANSPORT=sse")
             mcp_config = {"transport": "sse", "url": arxiv_mcp_url}
-            _ARXIV_TOOL = MCPTool(name="arxiv_mcp", server_command=mcp_config)
-            logger.info(f"Initialized ArXiv MCP Tool with SSE transport: {arxiv_mcp_url}")
+            _ARXIV_TOOL = MCPTool(name="arxiv_mcp", server=mcp_config)
+            logger.info("Initialized ArXiv MCP Tool with SSE transport: %s", arxiv_mcp_url)
         else:
             # We assume it runs from `backend` directory, but agent might be started anywhere.
-            import sys
             from pathlib import Path
             # Path to the __init__.py of arxiv_mcp_server
             src_dir = Path(__file__).resolve().parent.parent
             mcp_server_path = src_dir / "mcp_server" / "arxiv-mcp-server" / "src" / "arxiv_mcp_server" / "__init__.py"
             _ARXIV_TOOL = MCPTool(
                 name="arxiv_mcp",
-                server_command=["python", str(mcp_server_path)]
+                server_command=[resolved.arxiv_mcp_command, str(mcp_server_path)]
             )
-            logger.info(f"Initialized ArXiv MCP Tool with Stdio transport: {mcp_server_path}")
+            logger.info("Initialized ArXiv MCP Tool with Stdio transport: %s", mcp_server_path)
     return _ARXIV_TOOL
 
-def dispatch_arxiv_search(query: str, max_results: int = 5) -> dict[str, Any]:
+def dispatch_arxiv_search(query: str, max_results: int = 5, config: Optional[Configuration] = None) -> dict[str, Any]:
     """Execute ArXiv search via MCP Tool."""
     logger.info("Dispatching ArXiv search query: %s", query)
     try:
-        tool = get_arxiv_tool()
+        tool = get_arxiv_tool(config)
     except Exception as e:
         logger.error("Failed to initialize ArXiv tool: %s", e)
         return {"error": f"Tool init failed: {e}"}

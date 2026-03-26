@@ -328,15 +328,17 @@ class DeepResearchAgent:
                 all_contexts.append(web_context)
             backends.append(backend)
 
-        if "arxiv" in task.search_tools and task.arxiv_query:
+        if "arxiv" in task.search_tools and task.arxiv_query and self.config.enable_mcp:
             from services.mcp_arxiv import dispatch_arxiv_search, prepare_arxiv_context
-            arxiv_result = dispatch_arxiv_search(task.arxiv_query, max_results=3)
+            arxiv_result = dispatch_arxiv_search(task.arxiv_query, max_results=3, config=self.config)
             arxiv_sources, arxiv_context = prepare_arxiv_context(arxiv_result)
             if arxiv_sources:
                 all_sources.append(arxiv_sources)
             if arxiv_context:
                 all_contexts.append(arxiv_context)
             backends.append("arxiv_mcp")
+        elif "arxiv" in task.search_tools and task.arxiv_query and not self.config.enable_mcp:
+            all_notices.append("ArXiv MCP is disabled (ENABLE_MCP=false); skipped arxiv retrieval.")
 
         self._last_search_notices = all_notices
         task.notices = all_notices

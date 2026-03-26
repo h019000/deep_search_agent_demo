@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from typing import Any, Dict, Iterator, Optional
 
@@ -181,10 +182,13 @@ app = create_app()
 if __name__ == "__main__":
     import uvicorn
 
+    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", "8000"))
+
     uvicorn.run(
         "main:app",
-        host="0.0.0.0",
-        port=8000,
+        host=host,
+        port=port,
         reload=True,
         log_level="info"
     )
