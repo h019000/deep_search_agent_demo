@@ -2,16 +2,21 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import os
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from queue import Empty, Queue
 from threading import Lock, Thread
-from typing import Any, Callable, Iterator
+from typing import Any, Callable, Dict, Iterator, Optional
 
 from hello_agents import HelloAgentsLLM, ToolAwareSimpleAgent
 from hello_agents.tools import ToolRegistry
 from hello_agents.tools.builtin.note_tool import NoteTool
+from hello_agents.tools.builtin.protocol_tools import MCPTool
+from services.tool_events import ToolCallTracker
 
 from config import Configuration
 from prompts import (
@@ -24,7 +29,6 @@ from services.planner import PlanningService
 from services.reporter import ReportingService
 from services.search import dispatch_search, prepare_research_context
 from services.summarizer import SummarizationService
-from services.tool_events import ToolCallTracker
 
 logger = logging.getLogger(__name__)
 
@@ -33,19 +37,39 @@ class DeepResearchAgent:
     """Coordinator orchestrating TODO-based research workflow using HelloAgents."""
 
     def __init__(self, config: Configuration | None = None) -> None:
-        """Initialise the coordinator with configuration and shared tools."""
+        """Initialize the coordinator with configuration and shared tools."""
         self.config = config or Configuration.from_env()
         self.llm = self._init_llm()
 
         self.note_tool = (
             NoteTool(workspace=self.config.notes_workspace)
-            if self.config.enable_notes
+            if self.config.notes_workspace and self.config.use_tool_calling
             else None
         )
+        
         self.tools_registry: ToolRegistry | None = None
-        if self.note_tool:
+        if self.config.use_tool_calling:
             registry = ToolRegistry()
-            registry.register_tool(self.note_tool)
+            if self.note_tool:
+                registry.register_tool(self.note_tool)
+            
+            # Setup ArXiv MCP Tool
+            arxiv_mcp_url = os.environ.get("ARXIV_MCP_URL")
+            if arxiv_mcp_url:
+                # Use SSE Transport if URL is provided
+                mcp_config = {
+                    "transport": "sse",
+                    "url": arxiv_mcp_url
+                }
+                arxiv_tool = MCPTool(name="arxiv_mcp", server_command=mcp_config)
+            else:
+                # Use Stdio Transport by default
+                arxiv_tool = MCPTool(
+                    name="arxiv_mcp",
+                    server_command=["python", "src/mcp_server/arxiv-mcp-server/src/arxiv_mcp_server/__init__.py"]
+                )
+            
+            registry.register_tool(arxiv_tool)
             self.tools_registry = registry
 
         self._tool_tracker = ToolCallTracker(
