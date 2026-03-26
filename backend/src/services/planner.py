@@ -52,11 +52,19 @@ class PlanningService:
             if not query:
                 query = state.research_topic
 
+            tools = item.get("tools")
+            if not isinstance(tools, list):
+                tools = ["web"]
+
+            arxiv_query = str(item.get("arxiv_query") or "").strip()
+
             task = TodoItem(
                 id=idx,
                 title=title,
                 intent=intent,
                 query=query,
+                arxiv_query=arxiv_query if arxiv_query else None,
+                search_tools=tools,
             )
             todo_items.append(task)
 

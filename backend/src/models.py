@@ -15,6 +15,8 @@ class TodoItem:
     title: str
     intent: str
     query: str
+    arxiv_query: Optional[str] = field(default=None)
+    search_tools: list[str] = field(default_factory=lambda: ["web"])
     status: str = field(default="pending")
     summary: Optional[str] = field(default=None)
     sources_summary: Optional[str] = field(default=None)
@@ -48,4 +50,3 @@ class SummaryStateOutput:
     running_summary: str = field(default=None)  # Backward-compatible文本
     report_markdown: Optional[str] = field(default=None)
     todo_items: List[TodoItem] = field(default_factory=list)
-

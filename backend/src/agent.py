@@ -53,23 +53,6 @@ class DeepResearchAgent:
             if self.note_tool:
                 registry.register_tool(self.note_tool)
             
-            # Setup ArXiv MCP Tool
-            arxiv_mcp_url = os.environ.get("ARXIV_MCP_URL")
-            if arxiv_mcp_url:
-                # Use SSE Transport if URL is provided
-                mcp_config = {
-                    "transport": "sse",
-                    "url": arxiv_mcp_url
-                }
-                arxiv_tool = MCPTool(name="arxiv_mcp", server_command=mcp_config)
-            else:
-                # Use Stdio Transport by default
-                arxiv_tool = MCPTool(
-                    name="arxiv_mcp",
-                    server_command=["python", "src/mcp_server/arxiv-mcp-server/src/arxiv_mcp_server/__init__.py"]
-                )
-            
-            registry.register_tool(arxiv_tool)
             self.tools_registry = registry
 
         self._tool_tracker = ToolCallTracker(
@@ -321,13 +304,42 @@ class DeepResearchAgent:
         """Run search + summarization for a single task."""
         task.status = "in_progress"
 
-        search_result, notices, answer_text, backend = dispatch_search(
-            task.query,
-            self.config,
-            state.research_loop_count,
-        )
-        self._last_search_notices = notices
-        task.notices = notices
+        all_notices = []
+        all_sources = []
+        all_contexts = []
+        backends = []
+
+        if "web" in task.search_tools:
+            search_result, notices, answer_text, backend = dispatch_search(
+                task.query,
+                self.config,
+                state.research_loop_count,
+            )
+            if notices:
+                all_notices.extend(notices)
+            web_sources, web_context = prepare_research_context(
+                search_result,
+                answer_text,
+                self.config,
+            )
+            if web_sources:
+                all_sources.append(web_sources)
+            if web_context:
+                all_contexts.append(web_context)
+            backends.append(backend)
+
+        if "arxiv" in task.search_tools and task.arxiv_query:
+            from services.mcp_arxiv import dispatch_arxiv_search, prepare_arxiv_context
+            arxiv_result = dispatch_arxiv_search(task.arxiv_query, max_results=3)
+            arxiv_sources, arxiv_context = prepare_arxiv_context(arxiv_result)
+            if arxiv_sources:
+                all_sources.append(arxiv_sources)
+            if arxiv_context:
+                all_contexts.append(arxiv_context)
+            backends.append("arxiv_mcp")
+
+        self._last_search_notices = all_notices
+        task.notices = all_notices
 
         if emit_stream:
             for event in self._drain_tool_events(state, step=step):
@@ -335,8 +347,8 @@ class DeepResearchAgent:
         else:
             self._drain_tool_events(state)
 
-        if notices and emit_stream:
-            for notice in notices:
+        if all_notices and emit_stream:
+            for notice in all_notices:
                 if notice:
                     yield {
                         "type": "status",
@@ -345,7 +357,7 @@ class DeepResearchAgent:
                         "step": step,
                     }
 
-        if not search_result or not search_result.get("results"):
+        if not all_sources:
             task.status = "skipped"
             if emit_stream:
                 for event in self._drain_tool_events(state, step=step):
@@ -367,11 +379,9 @@ class DeepResearchAgent:
             if not emit_stream:
                 self._drain_tool_events(state)
 
-        sources_summary, context = prepare_research_context(
-            search_result,
-            answer_text,
-            self.config,
-        )
+        sources_summary = "\n\n".join(all_sources)
+        context = "\n\n".join(all_contexts)
+        backend_label = ", ".join(backends)
 
         task.sources_summary = sources_summary
 
@@ -391,7 +401,7 @@ class DeepResearchAgent:
                 "latest_sources": sources_summary,
                 "raw_context": context,
                 "step": step,
-                "backend": backend,
+                "backend": backend_label,
                 "note_id": task.note_id,
                 "note_path": task.note_path,
             }
